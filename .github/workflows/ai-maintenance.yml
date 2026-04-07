@@ -1,4 +1,4 @@
-name: AI maintenance (stub)
+name: AI maintenance (Gemini)
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  stub-agent:
+  gemini-agent:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,32 +42,35 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Stub commit and push branch
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements-ai.txt
+
+      - name: Run Gemini (analysis + files)
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           ISSUE_KEY: ${{ inputs.issue_key }}
           ISSUE_SUMMARY: ${{ inputs.issue_summary }}
           ISSUE_DESCRIPTION: ${{ inputs.issue_description }}
           MODE: ${{ inputs.mode }}
+        run: python3 scripts/ai_maint_gemini.py
+
+      - name: Commit and push branch
+        env:
+          ISSUE_KEY: ${{ inputs.issue_key }}
         run: |
           BRANCH="ai-maint/${ISSUE_KEY}"
           git checkout -B "$BRANCH"
-          python3 <<'PY'
-          import os
-          from pathlib import Path
-
-          key = os.environ["ISSUE_KEY"]
-          Path("docs/ai-runs").mkdir(parents=True, exist_ok=True)
-          text = (
-              f"# {key}\n\n"
-              f"**Summary:** {os.environ.get('ISSUE_SUMMARY', '')}\n\n"
-              f"**Mode:** {os.environ.get('MODE', '')}\n\n"
-              f"**Description:**\n{os.environ.get('ISSUE_DESCRIPTION', '')}\n\n"
-              "_Stub file from ai-maintenance workflow._\n"
-          )
-          (Path("docs/ai-runs") / f"{key}.md").write_text(text, encoding="utf-8")
-          PY
-          git add "docs/ai-runs/${ISSUE_KEY}.md"
-          git commit -m "chore(ai-maint): stub run for ${ISSUE_KEY}"
+          git add docs/ai-runs
+          if [ -d docs/ai-maint ]; then git add docs/ai-maint; fi
+          git status
+          git diff --staged --stat
+          git commit -m "chore(ai-maint): Gemini run for ${ISSUE_KEY}"
           git push -u origin "$BRANCH"
 
       - name: Open pull request
@@ -82,10 +85,13 @@ jobs:
           import os
           from pathlib import Path
 
+          key = os.environ["ISSUE_KEY"]
           body = (
-              f"Jira: **{os.environ['ISSUE_KEY']}**\n\n"
+              f"Jira: **{key}**\n\n"
               f"**Summary:** {os.environ.get('ISSUE_SUMMARY', '')}\n\n"
               f"**Mode:** {os.environ.get('MODE', '')}\n\n"
+              f"- Analysis: `docs/ai-runs/{key}-analysis.md`\n"
+              f"- Deliverables: `docs/ai-maint/{key}/`\n\n"
               f"Workflow run: {os.environ['RUN_URL']}\n"
           )
           Path("pr-body.md").write_text(body, encoding="utf-8")
@@ -93,5 +99,5 @@ jobs:
           gh pr create \
             --base main \
             --head "ai-maint/${ISSUE_KEY}" \
-            --title "[${ISSUE_KEY}] AI maintenance (stub)" \
+            --title "[${ISSUE_KEY}] AI maintenance (Gemini)" \
             --body-file pr-body.md
