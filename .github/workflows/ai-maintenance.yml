@@ -1,0 +1,97 @@
+name: AI maintenance (stub)
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Jira issue key (e.g. KAN-1)"
+        required: true
+        type: string
+      issue_summary:
+        description: "Issue summary from Jira"
+        required: false
+        type: string
+        default: ""
+      issue_description:
+        description: "Issue description from Jira"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "fix or investigate"
+        required: false
+        type: string
+        default: "fix"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  stub-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.AI_MAINTENANCE_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Stub commit and push branch
+        env:
+          ISSUE_KEY: ${{ inputs.issue_key }}
+          ISSUE_SUMMARY: ${{ inputs.issue_summary }}
+          ISSUE_DESCRIPTION: ${{ inputs.issue_description }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          BRANCH="ai-maint/${ISSUE_KEY}"
+          git checkout -B "$BRANCH"
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          key = os.environ["ISSUE_KEY"]
+          Path("docs/ai-runs").mkdir(parents=True, exist_ok=True)
+          text = (
+              f"# {key}\n\n"
+              f"**Summary:** {os.environ.get('ISSUE_SUMMARY', '')}\n\n"
+              f"**Mode:** {os.environ.get('MODE', '')}\n\n"
+              f"**Description:**\n{os.environ.get('ISSUE_DESCRIPTION', '')}\n\n"
+              "_Stub file from ai-maintenance workflow._\n"
+          )
+          (Path("docs/ai-runs") / f"{key}.md").write_text(text, encoding="utf-8")
+          PY
+          git add "docs/ai-runs/${ISSUE_KEY}.md"
+          git commit -m "chore(ai-maint): stub run for ${ISSUE_KEY}"
+          git push -u origin "$BRANCH"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.AI_MAINTENANCE_TOKEN }}
+          ISSUE_KEY: ${{ inputs.issue_key }}
+          ISSUE_SUMMARY: ${{ inputs.issue_summary }}
+          MODE: ${{ inputs.mode }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          body = (
+              f"Jira: **{os.environ['ISSUE_KEY']}**\n\n"
+              f"**Summary:** {os.environ.get('ISSUE_SUMMARY', '')}\n\n"
+              f"**Mode:** {os.environ.get('MODE', '')}\n\n"
+              f"Workflow run: {os.environ['RUN_URL']}\n"
+          )
+          Path("pr-body.md").write_text(body, encoding="utf-8")
+          PY
+          gh pr create \
+            --base main \
+            --head "ai-maint/${ISSUE_KEY}" \
+            --title "[${ISSUE_KEY}] AI maintenance (stub)" \
+            --body-file pr-body.md
