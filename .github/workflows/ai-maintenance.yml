@@ -1,5 +1,6 @@
 name: AI maintenance (Gemini)
 
+# This workflow does NOT run on git push. Start it from: Actions → this workflow → "Run workflow".
 on:
   workflow_dispatch:
     inputs:
@@ -99,13 +100,13 @@ jobs:
           )
           Path("pr-body.md").write_text(body, encoding="utf-8")
           PY
+          # gh pr create does not support --json; on success it prints the PR URL to stdout.
           PR_URL=$(gh pr create \
             --base main \
             --head "ai-maint/${ISSUE_KEY}" \
             --title "[${ISSUE_KEY}] AI maintenance (Gemini)" \
-            --body-file pr-body.md \
-            --json url \
-            --jq .url)
+            --body-file pr-body.md)
+          PR_URL=$(echo -n "$PR_URL" | tr -d '\r' | tail -n1)
           echo "url=${PR_URL}" >> "${GITHUB_OUTPUT}"
 
       # GitHub does not allow `secrets` in job/step `if:` — skip at runtime when unset.
