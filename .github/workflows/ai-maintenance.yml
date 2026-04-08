@@ -76,6 +76,7 @@ jobs:
           git push -u origin "$BRANCH"
 
       - name: Open pull request
+        id: pr
         env:
           GH_TOKEN: ${{ secrets.AI_MAINTENANCE_TOKEN }}
           ISSUE_KEY: ${{ inputs.issue_key }}
@@ -98,8 +99,63 @@ jobs:
           )
           Path("pr-body.md").write_text(body, encoding="utf-8")
           PY
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head "ai-maint/${ISSUE_KEY}" \
             --title "[${ISSUE_KEY}] AI maintenance (Gemini)" \
-            --body-file pr-body.md
+            --body-file pr-body.md \
+            --json url \
+            --jq .url)
+          echo "url=${PR_URL}" >> "${GITHUB_OUTPUT}"
+
+      - name: Notify bridge (Jira comment + link)
+        if: ${{ secrets.BRIDGE_JIRA_NOTIFY_URL != '' && secrets.BRIDGE_CALLBACK_SECRET != '' }}
+        env:
+          BRIDGE_URL: ${{ secrets.BRIDGE_JIRA_NOTIFY_URL }}
+          CALLBACK_SECRET: ${{ secrets.BRIDGE_CALLBACK_SECRET }}
+          ISSUE_KEY: ${{ inputs.issue_key }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          issue = os.environ["ISSUE_KEY"]
+          analysis_path = Path("docs/ai-runs") / f"{issue}-analysis.md"
+          analysis = ""
+          if analysis_path.is_file():
+              analysis = analysis_path.read_text(encoding="utf-8")[:28000]
+
+          pr_url = (os.environ.get("PR_URL") or "").strip()
+
+          body: dict = {
+              "issue_key": issue,
+              "workflow_run_url": os.environ["RUN_URL"],
+              "repository": os.environ["REPO"],
+              "branch": f"ai-maint/{issue}",
+              "analysis_markdown": analysis,
+          }
+          if pr_url:
+              body["pull_request_url"] = pr_url
+
+          req = urllib.request.Request(
+              os.environ["BRIDGE_URL"].strip(),
+              data=json.dumps(body).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json; charset=utf-8",
+                  "X-Bridge-Callback-Secret": os.environ["CALLBACK_SECRET"].strip(),
+              },
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  print(resp.read().decode())
+          except urllib.error.HTTPError as e:
+              print(e.read().decode())
+              raise
+          PY
