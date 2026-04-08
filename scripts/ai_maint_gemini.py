@@ -2,6 +2,7 @@
 """
 Call Gemini from GitHub Actions: analyze Jira summary/description, write analysis + files, commit-ready.
 Requires: GEMINI_API_KEY, ISSUE_KEY; optional ISSUE_SUMMARY, ISSUE_DESCRIPTION, MODE, GEMINI_MODEL.
+Default model is gemini-2.5-flash (stable); override with GEMINI_MODEL / repo variable if needed.
 """
 from __future__ import annotations
 
@@ -11,7 +12,8 @@ import re
 import sys
 from pathlib import Path
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 
 def _strip_code_fence(text: str) -> str:
@@ -67,14 +69,14 @@ def main() -> None:
     summary = os.environ.get("ISSUE_SUMMARY", "")
     description = os.environ.get("ISSUE_DESCRIPTION", "")
     mode = os.environ.get("MODE", "fix")
-    model_name = (os.environ.get("GEMINI_MODEL") or "").strip() or "gemini-2.0-flash"
+    model_name = (os.environ.get("GEMINI_MODEL") or "").strip() or "gemini-2.5-flash"
+    model_name = model_name.removeprefix("models/")
 
-    genai.configure(api_key=api_key)
-    generation_config = genai.GenerationConfig(
+    client = genai.Client(api_key=api_key)
+    gen_cfg = types.GenerateContentConfig(
         response_mime_type="application/json",
         temperature=0.2,
     )
-    model = genai.GenerativeModel(model_name, generation_config=generation_config)
 
     prompt = f"""You are an automated maintenance agent for a GitHub repository.
 
@@ -103,7 +105,11 @@ Rules:
 
     response = None
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=gen_cfg,
+        )
         raw_text = (response.text or "").strip()
         if not raw_text:
             print("ERROR: Empty Gemini response", file=sys.stderr)

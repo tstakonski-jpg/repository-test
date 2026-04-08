@@ -50,6 +50,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r scripts/requirements-ai.txt
 
+      # Optional repo variable GEMINI_MODEL; if unset, script defaults to gemini-2.5-flash.
+      # Do not use gemini-2.0-flash (deprecated / unavailable for new API keys).
       - name: Run Gemini (analysis + files)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
