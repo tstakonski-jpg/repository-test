@@ -108,8 +108,8 @@ jobs:
             --jq .url)
           echo "url=${PR_URL}" >> "${GITHUB_OUTPUT}"
 
+      # GitHub does not allow `secrets` in job/step `if:` — skip at runtime when unset.
       - name: Notify bridge (Jira comment + link)
-        if: ${{ secrets.BRIDGE_JIRA_NOTIFY_URL != '' && secrets.BRIDGE_CALLBACK_SECRET != '' }}
         env:
           BRIDGE_URL: ${{ secrets.BRIDGE_JIRA_NOTIFY_URL }}
           CALLBACK_SECRET: ${{ secrets.BRIDGE_CALLBACK_SECRET }}
@@ -118,6 +118,10 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REPO: ${{ github.repository }}
         run: |
+          if [ -z "${BRIDGE_URL}" ] || [ -z "${CALLBACK_SECRET}" ]; then
+            echo "Bridge notify skipped (BRIDGE_JIRA_NOTIFY_URL or BRIDGE_CALLBACK_SECRET not set)."
+            exit 0
+          fi
           python3 <<'PY'
           import json
           import os
