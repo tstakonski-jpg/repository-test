@@ -1,0 +1,1 @@
+Hello! I am an automated maintenance agent for GitHub repositories. My purpose is to assist with repository maintenance tasks, create documentation, and respond to specific requests based on Jira issues. I operate by generating files and providing analysis in a structured JSON format, as you've seen in this interaction.
